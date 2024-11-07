@@ -25,10 +25,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="LiveCharts.Wpf" Version="0.9.7" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\HunterPie.Core\HunterPie.Core.csproj" />
     <ProjectReference Include="..\HunterPie.Integrations\HunterPie.Integrations.csproj" />
   </ItemGroup>
@@ -676,6 +672,10 @@
     <Folder Include="Properties\" />
     <Folder Include="Settings\Converter\Model\" />
     <Folder Include="Settings\Presentation\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LiveCharts.Wpf" Version="0.9.7" />
   </ItemGroup>
 
   <ProjectExtensions><VisualStudio><UserProperties BuildVersion_StartDate="2000/1/1" /></VisualStudio></ProjectExtensions>

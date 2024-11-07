@@ -1,6 +1,7 @@
 ﻿using HunterPie.Core.Architecture;
 using HunterPie.Core.Client;
 using HunterPie.Core.Logger;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -25,35 +26,51 @@ public static class ScanManager
         if (_thread is not null)
             return;
 
-        _thread = new Thread(() =>
+        _thread = new Thread(async () =>
         {
-            do
-                try
-                {
-                    var sw = Stopwatch.StartNew();
-                    Scan();
-                    sw.Stop();
-                    ScanTime.Value = sw.ElapsedTicks / (TimeSpan.TicksPerMillisecond / 1000);
+            //do
+            //try
+            //{
+            //    await RunScanLoopAsync();
+            //var sw = Stopwatch.StartNew();
 
-                    if (_token.IsCancellationRequested)
-                        break;
+            //Scan();
+            //sw.Stop();
+            //ScanTime.Value = sw.ElapsedTicks / (TimeSpan.TicksPerMillisecond / 1000);
 
-                    Thread.Sleep((int)ClientConfig.Config.Client.PollingRate.Current);
-                }
-                catch (Exception err)
-                {
-                    // Logs the error if it came from a generic exception instead of a
-                    // cancel request
-                    Log.Error(err.ToString());
-                }
-            while (true);
+            //if (_token.IsCancellationRequested)
+            //    break;
 
-            _token = new();
+            //Thread.Sleep((int)ClientConfig.Config.Client.PollingRate.Current);
+            //}
+            //catch (Exception err)
+            //{
+            // Logs the error if it came from a generic exception instead of a
+            // cancel request
+            //    Log.Error(err.ToString());
+            //}
+            //while (true);
+
+            try
+            {
+                await RunScanLoopAsync(); // 將主要掃描邏輯移至另一個非同步方法
+            }
+            catch (Exception err)
+            {
+                Log.Error(err.ToString());
+            }
+            finally
+            {
+                _token = new();
+            }
+
+            //_token = new();
         })
         {
             Name = "ScanManager",
             IsBackground = true,
-            Priority = ThreadPriority.AboveNormal
+            //Priority = ThreadPriority.AboveNormal
+            Priority = ThreadPriority.Normal
         };
         _thread.Start();
     }
@@ -71,16 +88,33 @@ public static class ScanManager
         }
     }
 
-    private static void Scan()
+    private static async Task Scan()
     {
 
         Scannable[] readOnlyScannables = Scannables.ToArray();
-        var tasks = new Task[readOnlyScannables.Length];
+        //var tasks = new Task[readOnlyScannables.Length];
 
-        for (int i = 0; i < readOnlyScannables.Length; i++)
-            tasks[i] = Task.Run(readOnlyScannables[i].Scan);
+        using var semaphore = new SemaphoreSlim(Environment.ProcessorCount);
 
-        Task.WaitAll(tasks);
+        var tasks = readOnlyScannables.Select(async scannable =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                await Task.Run(scannable.Scan);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+
+        //for (int i = 0; i < readOnlyScannables.Length; i++)
+        //    tasks[i] = Task.Run(readOnlyScannables[i].Scan);
+
+        //Task.WaitAll(tasks);
     }
 
     public static void Add(params Scannable[] scannableList)
@@ -109,5 +143,48 @@ public static class ScanManager
 
             _ = Scannables.Remove(scannable);
         }
+    }
+
+    private static async Task RunScanLoopAsync()
+    {
+        while (!_token.IsCancellationRequested)
+        {
+            try
+            {
+                Stopwatch sw = Stopwatch.StartNew();
+
+                await Scan();  // 假設 Scan() 已被修改為非同步方法
+
+                sw.Stop();
+                ScanTime.Value = sw.ElapsedTicks / (TimeSpan.TicksPerMillisecond / 1000);
+
+                int delay = Math.Max(
+                    (int)ClientConfig.Config.Client.PollingRate.Current,
+                    CalculateOptimalDelay(sw.ElapsedMilliseconds)
+                );
+
+                await Task.Delay(delay, _token.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception err)
+            {
+                Log.Error(err.ToString());
+                await Task.Delay(100, _token.Token);
+            }
+        }
+    }
+
+    private static int CalculateOptimalDelay(long lastScanTime)
+    {
+        const int MIN_DELAY = 16;
+        const int MAX_DELAY = 100;
+
+        if (lastScanTime > 50)
+            return MAX_DELAY;
+
+        return MIN_DELAY;
     }
 }

@@ -71,7 +71,12 @@ internal abstract class WindowsProcessManager : IProcessManager, IEventDispatche
     {
         Log.Info($"Started scanning for process {Name}...");
 
-        _pooler = new Thread(new ThreadStart(ExecutePolling)) { Name = "PollingBackgroundThread", IsBackground = true, };
+        _pooler = new Thread(new ThreadStart(ExecutePolling))
+        {
+            Name = "PollingBackgroundThread",
+            IsBackground = true,
+            Priority = ThreadPriority.BelowNormal
+        };
         _pooler.Start();
     }
 
@@ -90,7 +95,7 @@ internal abstract class WindowsProcessManager : IProcessManager, IEventDispatche
                 }
 
             PollProcessInfo();
-            Thread.Sleep(150);
+            Thread.Sleep(300);
         }
     }
 
